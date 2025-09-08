@@ -19,14 +19,14 @@ SELLER_INFO = {
 def init_db():
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
-    # Changed 'album' to 'description'
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT NOT NULL UNIQUE,
         description TEXT NOT NULL,
-        image_url TEXT NOT NULL,
-        price INTEGER NOT NULL
+        image_urls TEXT NOT NULL,
+        price INTEGER NOT NULL,
+        shop_url TEXT
     )
     """)
     conn.commit()
@@ -69,12 +69,52 @@ intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # --- CUSTOMER UI VIEWS ---
-class ProductInfoView(ui.View):
-    # Removed the 'Full Album' button
+class ProductGalleryView(ui.View):
     def __init__(self, product):
-        super().__init__(timeout=None)
-        self.add_item(ui.Button(label="💬 Facebook", style=discord.ButtonStyle.link, url=SELLER_INFO['contact_fb']))
-        self.add_item(ui.Button(label="💬 Zalo", style=discord.ButtonStyle.link, url=SELLER_INFO['contact_zalo']))
+        super().__init__(timeout=300)
+        self.product = product
+        self.image_urls = product['image_urls'].split()
+        self.current_page = 0
+
+        self.update_buttons()
+        # Add Shop, Facebook, and Zalo buttons
+        if self.product['shop_url']:
+            self.add_item(ui.Button(label="🛒 Mua ngay", style=discord.ButtonStyle.success, url=self.product['shop_url'], row=1))
+        self.add_item(ui.Button(label="💬 Facebook", style=discord.ButtonStyle.link, url=SELLER_INFO['contact_fb'], row=1))
+        self.add_item(ui.Button(label="💬 Zalo", style=discord.ButtonStyle.link, url=SELLER_INFO['contact_zalo'], row=1))
+
+    def update_buttons(self):
+        for item in self.children[:]:
+            if isinstance(item, ui.Button) and item.custom_id in ["prev_page", "next_page"]:
+                self.remove_item(item)
+
+        prev_button = ui.Button(label="< Trước", style=discord.ButtonStyle.secondary, custom_id="prev_page", row=0, disabled=(self.current_page == 0))
+        next_button = ui.Button(label="Sau >", style=discord.ButtonStyle.secondary, custom_id="next_page", row=0, disabled=(self.current_page == len(self.image_urls) - 1))
+        
+        prev_button.callback = self.on_page
+        next_button.callback = self.on_page
+
+        self.add_item(prev_button)
+        self.add_item(next_button)
+
+    def create_embed(self):
+        # Display price prominently in the description
+        description_with_price = f"**Giá bán: {self.product['price']:,}₫**\n\n{self.product['description']}"
+
+        embed = discord.Embed(title=f"Thông tin sản phẩm: `{self.product['code']}`", description=description_with_price, color=0x6A0DAD)
+        embed.set_author(name=f"Cung cấp bởi: {SELLER_INFO['name']}", icon_url=SELLER_INFO['avatar_url'])
+        embed.set_image(url=self.image_urls[self.current_page])
+        embed.set_footer(text=f"Hình {self.current_page + 1}/{len(self.image_urls)}")
+        return embed
+
+    async def on_page(self, interaction: discord.Interaction):
+        if interaction.data["custom_id"] == "next_page":
+            self.current_page += 1
+        else:
+            self.current_page -= 1
+        
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
 class ProductSelectionView(ui.View):
     def __init__(self, matched_products):
@@ -92,12 +132,8 @@ class ProductButton(ui.Button):
         if not product:
             return await interaction.followup.send("Lỗi: Không tìm thấy sản phẩm này.", ephemeral=True)
         
-        # Updated embed to show description
-        embed = discord.Embed(title=f"Thông tin sản phẩm: `{product['code']}`", description=product['description'], color=0x6A0DAD)
-        embed.set_author(name=f"Cung cấp bởi: {SELLER_INFO['name']}", icon_url=SELLER_INFO['avatar_url'])
-        embed.set_image(url=product['image_url'])
-
-        await interaction.followup.send(embed=embed, view=ProductInfoView(product), ephemeral=True)
+        view = ProductGalleryView(product)
+        await interaction.followup.send(embed=view.create_embed(), view=view, ephemeral=True)
 
 class PriceRangeView(ui.View):
     def __init__(self):
@@ -166,36 +202,56 @@ async def add_product(ctx):
         return isinstance(m.channel, discord.DMChannel) and m.author == ctx.author
 
     try:
-        await ctx.author.send("**Bắt đầu thêm sản phẩm mới...**\n\n**(1/3)** Vui lòng gửi **thông tin/mô tả** cho sản phẩm:")
+        await ctx.author.send("**Bắt đầu thêm sản phẩm mới...**\n\n**(1/4)** Vui lòng gửi **thông tin/mô tả** cho sản phẩm:")
         desc_msg = await bot.wait_for('message', check=check, timeout=300)
         description = desc_msg.content
 
-        await ctx.author.send("**(2/3)** Vui lòng gửi **link ảnh đại diện (image URL)** của sản phẩm:")
-        image_msg = await bot.wait_for('message', check=check, timeout=300)
-        image_url = image_msg.content
+        await ctx.author.send("**(2/4)** Vui lòng gửi các **ảnh** cho sản phẩm. Bạn có thể **tải ảnh lên từ máy** hoặc **dán link ảnh** vào đây. (Ảnh đầu tiên sẽ là ảnh đại diện):")
+        images_msg = await bot.wait_for('message', check=check, timeout=300)
+        
+        image_urls_list = []
+        if images_msg.attachments:
+            for attachment in images_msg.attachments:
+                image_urls_list.append(attachment.url)
+        if images_msg.content:
+            potential_urls = images_msg.content.split()
+            for url in potential_urls:
+                if url.startswith('http'):
+                    image_urls_list.append(url)
 
-        await ctx.author.send("**(3/3)** Vui lòng gửi **giá bán** của sản phẩm (chỉ nhập số, ví dụ: `1500000`):")
+        if not image_urls_list:
+            await ctx.author.send("❌ Không có ảnh nào được cung cấp. Vui lòng thử lại với `!admin add`.")
+            return
+        image_urls_str = " ".join(image_urls_list)
+
+        await ctx.author.send("**(3/4)** Vui lòng gửi **giá bán** của sản phẩm (chỉ nhập số, ví dụ: `1500000`):")
         price_msg = await bot.wait_for('message', check=check, timeout=300)
         price = int(price_msg.content)
+
+        await ctx.author.send("**(4/4)** Vui lòng gửi **link web shop** cho sản phẩm (nếu không có, gõ `không`):")
+        shop_url_msg = await bot.wait_for('message', check=check, timeout=300)
+        shop_url = shop_url_msg.content if shop_url_msg.content.lower() not in ['không', 'ko', 'khong'] else None
 
         new_code = get_new_product_code()
         conn = sqlite3.connect('database.db')
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO products (code, description, image_url, price) VALUES (?, ?, ?, ?)", (new_code, description, image_url, price))
+        cursor.execute("INSERT INTO products (code, description, image_urls, price, shop_url) VALUES (?, ?, ?, ?, ?)", (new_code, description, image_urls_str, price, shop_url))
         conn.commit()
         conn.close()
 
         embed = discord.Embed(title="✅ Thêm sản phẩm thành công!", color=0x00FF00)
         embed.add_field(name="Mã sản phẩm", value=new_code, inline=False)
         embed.add_field(name="Giá bán", value=f"{price:,}₫", inline=False)
-        embed.add_field(name="Mô tả", value=description[:1024], inline=False) # Show first 1024 chars of description
-        embed.set_image(url=image_url)
+        embed.add_field(name="Mô tả", value=description[:1024], inline=False)
+        if shop_url:
+            embed.add_field(name="Link Shop", value=shop_url, inline=False)
+        embed.set_image(url=image_urls_list[0])
         await ctx.author.send(embed=embed)
 
     except asyncio.TimeoutError:
         await ctx.author.send("⌛ Hết thời gian. Vui lòng gõ `!admin add` để thử lại.")
     except ValueError:
-        await ctx.author.send("❌ Giá tiền không hợp lệ. Vui lòng nhập một con số. Thử lại với `!admin add`.")
+        await ctx.author.send("❌ Dữ liệu không hợp lệ. Vui lòng nhập đúng định dạng. Thử lại với `!admin add`.")
     except Exception as e:
         await ctx.author.send(f"Đã có lỗi xảy ra: {e}")
 
@@ -218,18 +274,19 @@ async def list_products(ctx):
     conn = sqlite3.connect('database.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT code, price, description FROM products ORDER BY id")
+    cursor.execute("SELECT code, price, description, image_urls, shop_url FROM products ORDER BY id")
     products = cursor.fetchall()
     conn.close()
 
     if not products:
         return await ctx.send("📭 Database trống, chưa có sản phẩm nào.", ephemeral=True)
 
-    # Paginate list if it's too long
     pages = []
     current_page = ""
     for p in products:
-        line = f"**- `{p['code']}`**: {p['price']:,}₫\n*Mô tả: {p['description'][:70]}...*\n\n"
+        first_image = p['image_urls'].split()[0] if p['image_urls'] else ''
+        shop_link_text = f" - [Shop]({p['shop_url']})" if p['shop_url'] else ""
+        line = f"**- `{p['code']}`**: {p['price']:,}₫ ([Ảnh]({first_image})){shop_link_text}\n*Mô tả: {p['description'][:70]}...*\n\n"
         if len(current_page) + len(line) > 1000:
             pages.append(current_page)
             current_page = ""
@@ -242,12 +299,15 @@ async def list_products(ctx):
 
 # --- Main Execution Logic ---
 async def main():
-    # Reset database on start for development to apply schema changes
+    # Reset database on start for development to apply new schema
     if os.path.exists('database.db'):
-        os.remove('database.db')
-        print("Old database removed to apply new schema.")
+        # We only need to do this if the schema changes. Since the last change added shop_url,
+        # we can comment this out for now to avoid data loss on every restart.
+        # os.remove('database.db') 
+        # print("Old database removed to apply new schema.")
+        pass
     
-    init_db()
+    init_db() # This will create the table if it doesn't exist, safe to run.
     print("Database initialized.")
     
     if DISCORD_TOKEN:
@@ -260,4 +320,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("Bot shutdown gracefully.")
-
