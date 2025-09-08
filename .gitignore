@@ -1,1 +1,14 @@
+# Environments
+.env
 .venv
+venv/
+__pycache__/
+
+# Databases
+*.db
+*.sqlite3
+
+# IDE / Editor specific
+.idea/
+.vscode/
+*.swp

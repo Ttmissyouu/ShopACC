@@ -3,4 +3,5 @@ pip
 autopep8
 
 # App
-flask
+discord.py
+python-dotenv

@@ -1,0 +1,15 @@
+đây là nhưng ý tưởng của tôi dành cho bot này. hãy giúp tôi thực hiện nó.
+1, tôi muốn có hệ thông nhận dữ liệu admin nhập bào gồm hình ảnh và văn bản. 
+đây sẽ là dữ liệu sản phẩm bán mà admin thêm vào. 
+2,nhận thông tin hình ảnh và văn bản và lưu vào bộ nhớ để sử dụng, yêu cầu admin đặt giá tiền cho sản phẩm đó
+đồng thời tính toán và đứa sản phẩm vào trong danh mục  khoảng giá
+❶100.000₫ → 500.000₫
+❷500.000₫ → 1.000.000₫
+❸ 1.000.000₫ → 3.000.000₫
+❹ Trên 3.000.000₫
+3,tự động tạo ra mã sản phẩm không trùng lặp nhau cho mỗi sản phẩm được nhập vào lưu lại để người dùng có thể chọn
+4, trong ember bác giá  hiện tại đang là đợi người mua nhập số để chọn khoảng giá. thay vào đó là hiển thị các nút bấm với mỗi mức giá, khi ấn vào nút bấm sẽ hiển thị ra danh sách
+sản phẩm trong mức giá đó.
+5, với ember danh sách sản phẩm trong khoảng giá cũng sẽ có những nút bấm chứ mã sản phẩm, khi ấn nút sẽ gửi thông tin về sản phẩm tưng ứng với mã đó
+6, thay đổi lại giao diện sản phẩm hiện có thành Thông tin sẳn phẩm và hình ảnh sản phẩm(do admin đã nhập trước đó), loại bỏ phần Link Full Album, Facebook,Zalo thay vào đó link Facebook và Zalo được hiển thị bằng nút bấm khi ấn vào sẽ truy cập vào đường link đó
+hãy thực hiện những thứ này trước khi tôi bổ sung thêm. hay hỏi thêm tôi khi bạn gặp nhưng vấn đề không thể  giải quyết
